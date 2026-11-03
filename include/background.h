@@ -103,6 +103,9 @@ struct background
   double Omega0_lambda;    /**< \f$ \Omega_{0_\Lambda} \f$: cosmological constant */
   /* COSMOS EXPERIMENTAL scalar elastic/gate species, not fld. */
   double Omega0_cosmos, cosmos_beta, cosmos_zeta, cosmos_cg, cosmos_xi;
+  FileName cosmos_scalar_cauchy_file,cosmos_vector_cauchy_file,cosmos_cauchy_snapshot_file;
+  double cosmos_scalar_cauchy_a,cosmos_vector_cauchy_a;
+  int cosmos_scalar_cauchy_lmax,cosmos_vector_cauchy_lmax;
   FileName cosmos_tensor_cauchy_file;
   double cosmos_tensor_cauchy_a;
   int cosmos_tensor_cauchy_lmax;

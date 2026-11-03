@@ -3301,6 +3301,27 @@ int input_read_parameters_species(struct file_content * pfc,
   class_read_double("cosmos_cg",pba->cosmos_cg);
   class_read_double("cosmos_xi",pba->cosmos_xi);
   class_read_double("cosmos_initial_phase",pba->cosmos_initial_phase);
+
+  class_read_string("cosmos_scalar_cauchy_file",pba->cosmos_scalar_cauchy_file);
+  class_read_string("cosmos_vector_cauchy_file",pba->cosmos_vector_cauchy_file);
+  class_read_string("cosmos_cauchy_snapshot_file",pba->cosmos_cauchy_snapshot_file);
+  class_read_double("cosmos_scalar_cauchy_a",pba->cosmos_scalar_cauchy_a);
+  class_read_double("cosmos_vector_cauchy_a",pba->cosmos_vector_cauchy_a);
+  class_read_int("cosmos_scalar_cauchy_lmax",pba->cosmos_scalar_cauchy_lmax);
+  class_read_int("cosmos_vector_cauchy_lmax",pba->cosmos_vector_cauchy_lmax);
+  class_test(pba->cosmos_scalar_cauchy_file[0]!='\0' &&
+    (!ppt->has_scalars || ppt->has_vectors || ppt->has_tensors || pba->Omega0_cosmos<=0. ||
+     fabs(pba->Omega0_k)>1e-14 || pba->cosmos_scalar_cauchy_a<=0. || pba->cosmos_scalar_cauchy_a>=1. ||
+     pba->cosmos_scalar_cauchy_lmax<3 || pba->cosmos_scalar_cauchy_lmax>64 ||
+     ppt->has_bi || ppt->has_cdi || ppt->has_nid || ppt->has_niv),errmsg,
+    "Scalar Cauchy requires scalar-only flat positive-COSMOS modes, one ad-labelled basis, valid a and lmax 3..64");
+  class_test(pba->cosmos_vector_cauchy_file[0]!='\0' &&
+    (!ppt->has_vectors || ppt->has_scalars || ppt->has_tensors || pba->Omega0_cosmos<=0. ||
+     fabs(pba->Omega0_k)>1e-14 || pba->cosmos_vector_cauchy_a<=0. || pba->cosmos_vector_cauchy_a>=1. ||
+     pba->cosmos_vector_cauchy_lmax<2 || pba->cosmos_vector_cauchy_lmax>64 ||
+     pba->cosmos_vector_control_seed!=0. || pba->cosmos_vector_control_seed_prime!=0.),errmsg,
+    "Vector Cauchy requires vector-only flat positive-COSMOS modes, valid a and lmax 2..64, no diagnostic gate seed");
+
   class_read_string("cosmos_tensor_cauchy_file",pba->cosmos_tensor_cauchy_file);
   class_read_double("cosmos_tensor_cauchy_a",pba->cosmos_tensor_cauchy_a);
   class_read_int("cosmos_tensor_cauchy_lmax",pba->cosmos_tensor_cauchy_lmax);
@@ -6049,6 +6070,9 @@ int input_default_params(struct background *pba,
   /** 9) Dark energy contributions */
   pba->Omega0_cosmos = 0.;
   pba->cosmos_initial_phase = 0.01;
+  pba->cosmos_scalar_cauchy_file[0]='\0';pba->cosmos_vector_cauchy_file[0]='\0';pba->cosmos_cauchy_snapshot_file[0]='\0';
+  pba->cosmos_scalar_cauchy_a=0.;pba->cosmos_vector_cauchy_a=0.;
+  pba->cosmos_scalar_cauchy_lmax=6;pba->cosmos_vector_cauchy_lmax=6;
   pba->cosmos_tensor_cauchy_file[0]='\0';
   pba->cosmos_tensor_cauchy_a=0.;pba->cosmos_tensor_cauchy_lmax=6;
   pba->cosmos_vector_control_seed=0.; pba->cosmos_vector_control_seed_prime=0.;

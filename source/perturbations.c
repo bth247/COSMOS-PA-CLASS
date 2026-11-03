@@ -27,6 +27,105 @@
 #include "perturbations.h"
 #include "parallel.h"
 
+/* Validate all supplied rows against the requested fixed-a background. */
+static int cosmos_svt_row_constraint(double *v,double k,char mode,int L,
+                                     const double *b,ErrorMsg errmsg) {
+  double a=b[0],hc=b[1],rg=b[2],rb=b[3],rc=b[4],rn=b[5],rs=b[6];
+  double c,scale,density,momentum,f=sqrt(2./3.);int z=L+9;
+  if (mode=='s') {
+    class_test(v[7]!=0.,errmsg,"Scalar Cauchy frame must have zero relative CDM velocity");
+    class_test(fabs(v[3]-v[5])>1.e-8*MAX(MAX(fabs(v[3]),fabs(v[5])),1.e-100),errmsg,"Scalar Cauchy photon/baryon velocities differ");
+    c=v[z+2]+1.5*f*v[z]-3*f*v[0];
+    scale=MAX(MAX(fabs(v[z+2]),fabs(1.5*f*v[z])),MAX(fabs(3*f*v[0]),1.e-200));
+    class_test(fabs(c)>1.e-7*scale,errmsg,"Scalar Cauchy material geometry is inconsistent");
+    density=rg*v[2]+rb*v[4]+rc*v[6]+rn*v[8]+rs*v[z];
+    momentum=hc*(4*rg*v[3]/3+rb*v[5]+rc*v[7]+4*rn*v[9]/3+2*rs*v[z+1]/3);
+    c=k*k*(v[0]-v[1])+4.5*a*a*hc*momentum/(k*k)+1.5*a*a*density;
+    scale=MAX(MAX(fabs(k*k*(v[0]-v[1])),fabs(4.5*a*a*hc*momentum/(k*k))),MAX(fabs(1.5*a*a*density),1.e-200));
+  }
+  else {
+    momentum=(4*rg/3+rb)*v[5]+4*rn*v[6]/3+2*rs*v[1]/3;
+    c=k*k*v[0]-6*a*a*momentum;scale=MAX(MAX(fabs(k*k*v[0]),fabs(6*a*a*momentum)),1.e-200);
+  }
+  class_test(fabs(c)>2.e-5*scale,errmsg,"SVT Cauchy supplied row violates Einstein constraint at k=%g: relative %g",k,fabs(c)/scale);
+  return _SUCCESS_;
+}
+/* A full-file validated numerical table: interpolation never hides bad tails. */
+static int cosmos_svt_cauchy_read(const char *filename, double k, int columns,
+                                 double *out,char mode,const double *bg,ErrorMsg errmsg) {
+  FILE *f=fopen(filename,"r");
+  char line[8192],*cursor,*end;
+  double row[128],prev[128],previous_k=-1.,fraction;
+  int i,have_previous=0,found=0,interpolated=0,line_number=0,L=columns-((mode=='s')?15:7);
+  class_test(f==NULL,errmsg,"Cannot open SVT Cauchy data %s",filename);
+  if (columns<6 || columns>128) { fclose(f); class_stop(errmsg,"Invalid SVT Cauchy column count"); }
+  while (fgets(line,sizeof(line),f)!=NULL) {
+    line_number++;
+    if (strchr(line,'\n')==NULL && !feof(f)) { fclose(f); class_stop(errmsg,"SVT Cauchy line too long"); }
+    cursor=line;while (*cursor==' ' || *cursor=='\t') cursor++;
+    if (*cursor=='#' || *cursor=='\n' || *cursor=='\r' || *cursor=='\0') continue;
+    for (i=0;i<columns;i++) {
+      row[i]=strtod(cursor,&end);
+      if (end==cursor || !isfinite(row[i])) { fclose(f); class_stop(errmsg,"Invalid SVT Cauchy number at line %d",line_number); }
+      cursor=end;
+    }
+    while (*cursor==' ' || *cursor=='\t' || *cursor=='\r' || *cursor=='\n') cursor++;
+    if (*cursor!='\0' && *cursor!='#') { fclose(f); class_stop(errmsg,"Extra SVT Cauchy columns at line %d",line_number); }
+    if (row[0]<=0. || row[0]<=previous_k) { fclose(f); class_stop(errmsg,"SVT Cauchy k grid must be positive and increasing"); }
+    if (cosmos_svt_row_constraint(row+1,row[0],mode,L,bg,errmsg)==_FAILURE_) { fclose(f);return _FAILURE_; }
+    previous_k=row[0];
+    if (!found && fabs(log(k/row[0]))<1.e-12) {
+      for (i=1;i<columns;i++) out[i-1]=row[i];found=1;
+    }
+    if (!found && row[0]>k) {
+      if (!have_previous) { fclose(f); class_stop(errmsg,"SVT Cauchy k=%g below supplied grid",k); }
+      fraction=log(k/prev[0])/log(row[0]/prev[0]);
+      for (i=1;i<columns;i++) out[i-1]=prev[i]+fraction*(row[i]-prev[i]);
+      found=1;interpolated=1;
+    }
+    for (i=0;i<columns;i++) prev[i]=row[i];have_previous=1;
+  }
+  if (ferror(f)) { fclose(f); class_stop(errmsg,"Error reading SVT Cauchy data"); }
+  fclose(f);class_test(!found,errmsg,"SVT Cauchy k=%g above supplied grid or empty file",k);
+  /* Keep the scalar curvature/clock bounded and complete the photon
+     density through 00. For vectors, 0i fixes V. Exact rows are unchanged. */
+  if (interpolated) {
+    double a=bg[0],hc=bg[1],rg=bg[2],rb=bg[3],rc=bg[4],rn=bg[5],rs=bg[6],mom,density;
+    if (mode=='s') {
+      int z=L+9;
+      density=rb*out[4]+rc*out[6]+rn*out[8]+rs*out[z];
+      mom=hc*(4*rg*out[3]/3+rb*out[5]+4*rn*out[9]/3+2*rs*out[z+1]/3);
+      out[2]=(-k*k*(out[0]-out[1])-4.5*a*a*hc*mom/(k*k))/(1.5*a*a*rg)-density/rg;
+    }
+    else {
+      mom=(4*rg/3+rb)*out[5]+4*rn*out[6]/3+2*rs*out[1]/3;
+      out[0]=6*a*a*mom/(k*k);
+    }
+  }
+  return _SUCCESS_;
+}
+
+static double cosmos_svt_entry_a(struct background *pba) {
+  if (pba->cosmos_scalar_cauchy_file[0]!='\0') return pba->cosmos_scalar_cauchy_a;
+  if (pba->cosmos_vector_cauchy_file[0]!='\0') return pba->cosmos_vector_cauchy_a;
+  if (pba->cosmos_tensor_cauchy_file[0]!='\0') return pba->cosmos_tensor_cauchy_a;
+  return 0.;
+}
+
+static int cosmos_svt_snapshot(const char *base,int index,char mode,double k,
+                               double a,double hc,double *v,int count,ErrorMsg errmsg) {
+  char path[1024];FILE *f;int j,n;
+  if (base[0]=='\0' || index<0) return _SUCCESS_;
+  n=snprintf(path,sizeof(path),"%s_k%d_%c.dat",base,index,mode);
+  class_test(n<0 || n>=(int)sizeof(path),errmsg,"Cauchy snapshot path too long");
+  f=fopen(path,"w");class_test(f==NULL,errmsg,"Cannot write Cauchy snapshot %s",path);
+  fprintf(f,"# Exact initial native state before evolution; k a Hconf followed by current-gauge fields\n");
+  fprintf(f,"%.17e %.17e %.17e",k,a,hc);
+  for (j=0;j<count;j++) fprintf(f," %.17e",v[j]);
+  fprintf(f,"\n");fclose(f);return _SUCCESS_;
+}
+
+
 /* Refine inverse-background interpolation so the Cauchy surface is fixed a. */
 static int cosmos_tensor_cauchy_tau(struct background *pba, double target,
                                    double *tau, ErrorMsg errmsg) {
@@ -1941,9 +2040,9 @@ int perturbations_timesampling_for_sources(
       timescale_source = 1/aH; repeat till today.
   */
 
-  if (pba->cosmos_tensor_cauchy_file[0]!='\0') {
+  if (cosmos_svt_entry_a(pba)>0.) {
     double entry_tau;
-    class_call(cosmos_tensor_cauchy_tau(pba,pba->cosmos_tensor_cauchy_a,&entry_tau,ppt->error_message),ppt->error_message,ppt->error_message);
+    class_call(cosmos_tensor_cauchy_tau(pba,cosmos_svt_entry_a(pba),&entry_tau,ppt->error_message),ppt->error_message,ppt->error_message);
     tau_ini=MAX(tau_ini,entry_tau);
   }
   counter = 1;
@@ -3170,8 +3269,8 @@ int perturbations_solve(
   }
 
   tau = tau_mid;
-  if (_tensors_ && pba->cosmos_tensor_cauchy_file[0]!='\0') {
-    class_call(cosmos_tensor_cauchy_tau(pba,pba->cosmos_tensor_cauchy_a,&tau,ppt->error_message),ppt->error_message,ppt->error_message);
+  if (cosmos_svt_entry_a(pba)>0.) {
+    class_call(cosmos_tensor_cauchy_tau(pba,cosmos_svt_entry_a(pba),&tau,ppt->error_message),ppt->error_message,ppt->error_message);
     class_test(tau>ppt->tau_sampling[0]*(1.+1.e-10),ppt->error_message,"Tensor Cauchy entry is later than source sampling start");
   }
 
@@ -3425,6 +3524,15 @@ int perturbations_prepare_k_output(struct background * pba,
       /* Cold dark matter */
       class_store_columntitle(ppt->scalar_titles,"delta_cdm",pba->has_cdm);
       class_store_columntitle(ppt->scalar_titles,"theta_cdm",pba->has_cdm);
+
+      class_store_columntitle(ppt->scalar_titles,"delta_cosmos_current",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->scalar_titles,"theta_cosmos_current",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->scalar_titles,"E_cosmos_STF",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->scalar_titles,"Q_cosmos_STF",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->scalar_titles,"Qprime_cosmos_STF",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->scalar_titles,"Pi_cosmos_CLASS_STF",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->scalar_titles,"material_geometry_residual",pba->Omega0_cosmos>0.);
+
       /* Interacting dark matter */
       class_store_columntitle(ppt->scalar_titles,"delta_idm",pba->has_idm);
       class_store_columntitle(ppt->scalar_titles,"theta_idm",pba->has_idm);
@@ -6841,6 +6949,96 @@ int perturbations_initial_conditions(struct precision * ppr,
 
   }
 
+
+  /* Full external scalar initial state, expressed in a cancellation-free
+     CDM-comoving frame. Only the requested gauge transformation is applied. */
+  if (_scalars_ && pba->cosmos_scalar_cauchy_file[0]!='\0') {
+    double v[127],snap[127],a=ppw->pvecback[pba->index_bg_a];
+    double hc=a*ppw->pvecback[pba->index_bg_H],kap=k*k/(hc*hc),f=sqrt(2./3.);
+    double rg,rb,rc,rn;
+    double rs=pba->Omega0_cosmos*pba->H0*pba->H0/(a*a),density,momentum,c0,scale,compat,shift,bg[7];
+    int L=pba->cosmos_scalar_cauchy_lmax,j=ppw->pv->index_pt_cosmos,ell,z,ns=0;
+    class_test(index_ic!=ppt->index_ic_ad || !pba->has_cdm || !pba->has_ur ||
+      pba->has_ncdm || pba->has_fld || pba->has_scf || pba->has_dcdm || pba->has_dr || pba->has_idr || pba->has_idm || ppt->has_perturbed_recombination,
+      ppt->error_message,"Scalar Cauchy supports one ad-labelled basis with baryons, CDM, massless ur, Lambda and COSMOS only");
+    rg=ppw->pvecback[pba->index_bg_rho_g];rb=ppw->pvecback[pba->index_bg_rho_b];
+    rc=ppw->pvecback[pba->index_bg_rho_cdm];rn=ppw->pvecback[pba->index_bg_rho_ur];
+    class_test(ppw->approx[ppw->index_ap_tca]!=(int)tca_on || ppw->approx[ppw->index_ap_rsa]!=(int)rsa_off || ppw->approx[ppw->index_ap_ufa]!=(int)ufa_off,
+      ppt->error_message,"Scalar Cauchy requires photon tight coupling and full ur hierarchy at entry");
+    class_test(L>ppw->pv->l_max_ur,ppt->error_message,"Scalar Cauchy lmax exceeds evolved hierarchy");
+    bg[0]=a;bg[1]=hc;bg[2]=rg;bg[3]=rb;bg[4]=rc;bg[5]=rn;bg[6]=rs;
+    class_call(cosmos_svt_cauchy_read(pba->cosmos_scalar_cauchy_file,k,L+15,v,'s',bg,ppt->error_message),ppt->error_message,ppt->error_message);
+    class_test(v[7]!=0.,ppt->error_message,"Scalar Cauchy frame must have zero relative CDM velocity");
+    class_test(fabs(v[3]-v[5])>1.e-8*MAX(MAX(fabs(v[3]),fabs(v[5])),1.e-100),ppt->error_message,"Scalar Cauchy photon/baryon entry velocities must be tightly coupled");
+    z=L+9;
+    compat=v[z+2]+1.5*f*v[z]-3.*f*v[0];
+    scale=MAX(MAX(fabs(v[z+2]),fabs(1.5*f*v[z])),MAX(fabs(3.*f*v[0]),1.e-200));
+    class_test(fabs(compat)>1.e-7*scale,ppt->error_message,"Scalar Cauchy material density/strain geometry is inconsistent");
+    density=rg*v[2]+rb*v[4]+rc*v[6]+rn*v[8]+rs*v[z];
+    momentum=hc*(4.*rg*v[3]/3.+rb*v[5]+rc*v[7]+4.*rn*v[9]/3.+2.*rs*v[z+1]/3.);
+    c0=k*k*(v[0]-v[1])+4.5*a*a*hc*momentum/(k*k)+1.5*a*a*density;
+    scale=MAX(MAX(fabs(k*k*(v[0]-v[1])),fabs(4.5*a*a*hc*momentum/(k*k))),MAX(fabs(1.5*a*a*density),1.e-200));
+    class_test(fabs(c0)>2.e-5*scale,ppt->error_message,"Scalar Cauchy Einstein constraint failed: relative %g",fabs(c0)/scale);
+    for (ell=0;ell<ppw->pv->pt_size;ell++) ppw->pv->y[ell]=0.;
+    shift=(ppt->gauge==newtonian)?v[1]:0.;
+    if (ppt->gauge==newtonian) ppw->pv->y[ppw->pv->index_pt_phi]=v[0]-v[1];
+    else ppw->pv->y[ppw->pv->index_pt_eta]=v[0];
+    ppw->pv->y[ppw->pv->index_pt_delta_g]=v[2]-4.*shift;
+    ppw->pv->y[ppw->pv->index_pt_theta_g]=hc*(v[3]+kap*shift);
+    ppw->pv->y[ppw->pv->index_pt_delta_b]=v[4]-3.*shift;
+    ppw->pv->y[ppw->pv->index_pt_theta_b]=hc*(v[5]+kap*shift);
+    ppw->pv->y[ppw->pv->index_pt_delta_cdm]=v[6]-3.*shift;
+    if (ppt->gauge==newtonian) ppw->pv->y[ppw->pv->index_pt_theta_cdm]=hc*kap*shift;
+    ppw->pv->y[ppw->pv->index_pt_delta_ur]=v[8]-4.*shift;
+    ppw->pv->y[ppw->pv->index_pt_theta_ur]=hc*(v[9]+kap*shift);
+    ppw->pv->y[ppw->pv->index_pt_shear_ur]=v[10];
+    for (ell=3;ell<=ppw->pv->l_max_ur;ell++) ppw->pv->y[ppw->pv->index_pt_l3_ur+ell-3]=(ell<=L)?v[ell+8]:0.;
+    ppw->pv->y[j]=v[z]-2.*shift;ppw->pv->y[j+1]=hc*(v[z+1]+kap*shift);
+    ppw->pv->y[j+2]=v[z+2];ppw->pv->y[j+3]=v[z+3];ppw->pv->y[j+4]=hc*v[z+4];
+    if (ppt->k_output_values_num>0 && ppw->index_ikout>=0) {
+      snap[ns++]=(ppt->gauge==newtonian)?ppw->pv->y[ppw->pv->index_pt_phi]:ppw->pv->y[ppw->pv->index_pt_eta];
+      snap[ns++]=ppw->pv->y[ppw->pv->index_pt_delta_g];snap[ns++]=ppw->pv->y[ppw->pv->index_pt_theta_g]/hc;
+      snap[ns++]=ppw->pv->y[ppw->pv->index_pt_delta_b];snap[ns++]=ppw->pv->y[ppw->pv->index_pt_theta_b]/hc;
+      snap[ns++]=ppw->pv->y[ppw->pv->index_pt_delta_cdm];snap[ns++]=(ppt->gauge==newtonian)?ppw->pv->y[ppw->pv->index_pt_theta_cdm]/hc:0.;
+      snap[ns++]=ppw->pv->y[ppw->pv->index_pt_delta_ur];snap[ns++]=ppw->pv->y[ppw->pv->index_pt_theta_ur]/hc;snap[ns++]=ppw->pv->y[ppw->pv->index_pt_shear_ur];
+      for (ell=3;ell<=L;ell++) snap[ns++]=ppw->pv->y[ppw->pv->index_pt_l3_ur+ell-3];
+      for (ell=0;ell<5;ell++) snap[ns++]=ppw->pv->y[j+ell]/((ell==1 || ell==4)?hc:1.);
+      class_call(cosmos_svt_snapshot(pba->cosmos_cauchy_snapshot_file,ppw->index_ikout,'s',k,a,hc,snap,ns,ppt->error_message),ppt->error_message,ppt->error_message);
+    }
+  }
+  if (_vectors_ && pba->cosmos_vector_cauchy_file[0]!='\0') {
+    double v[127],snap[127],a=ppw->pvecback[pba->index_bg_a],hc,shift,rg,rb,rn,rs,momentum,c0,scale,bg[7];
+    int L=pba->cosmos_vector_cauchy_lmax,j=ppw->pv->index_pt_cosmos_vector,ell,ns=0;
+    hc=a*ppw->pvecback[pba->index_bg_H];
+    rs=pba->Omega0_cosmos*pba->H0*pba->H0/(a*a);
+    class_test(ppt->hierarchy!=tam || !ppt->evolve_vector_ur || pba->has_ncdm || !pba->has_ur ||
+      pba->has_fld || pba->has_scf || pba->has_dcdm || pba->has_dr || pba->has_idr || pba->has_idm ||
+      pba->cosmos_vector_control_seed!=0. || pba->cosmos_vector_control_seed_prime!=0.,
+      ppt->error_message,"Vector Cauchy requires TAM and massless ur, N_ncdm=0");
+    rg=ppw->pvecback[pba->index_bg_rho_g];rb=ppw->pvecback[pba->index_bg_rho_b];rn=ppw->pvecback[pba->index_bg_rho_ur];
+    class_test(ppw->approx[ppw->index_ap_tca]!=(int)tca_on || ppw->approx[ppw->index_ap_rsa]!=(int)rsa_off,
+      ppt->error_message,"Vector Cauchy requires photon tight coupling and full ur at entry");
+    class_test(L>ppw->pv->l_max_ur,ppt->error_message,"Vector Cauchy lmax exceeds evolved hierarchy");
+    bg[0]=a;bg[1]=hc;bg[2]=rg;bg[3]=rb;bg[4]=0.;bg[5]=rn;bg[6]=rs;
+    class_call(cosmos_svt_cauchy_read(pba->cosmos_vector_cauchy_file,k,L+7,v,'v',bg,ppt->error_message),ppt->error_message,ppt->error_message);
+    momentum=(4.*rg/3.+rb)*v[5]+4.*rn*v[6]/3.+2.*rs*v[1]/3.;
+    c0=k*k*v[0]-6.*a*a*momentum;scale=MAX(MAX(fabs(k*k*v[0]),fabs(6.*a*a*momentum)),1.e-200);
+    class_test(fabs(c0)>2.e-5*scale,ppt->error_message,"Vector Cauchy Einstein momentum constraint failed: relative %g",fabs(c0)/scale);
+    for (ell=0;ell<ppw->pv->pt_size;ell++) ppw->pv->y[ell]=0.;
+    shift=(ppt->gauge==newtonian)?v[0]:0.;
+    ppw->pv->y[ppw->pv->index_pt_V]=v[0];ppw->pv->y[ppw->pv->index_pt_theta_b]=v[5]+shift;
+    ppw->pv->y[j]=v[1];ppw->pv->y[j+1]=v[2];ppw->pv->y[j+2]=v[3];ppw->pv->y[j+3]=hc*v[4];
+    ppw->pv->y[ppw->pv->index_pt_l1_ur]=v[6]+shift;
+    for (ell=2;ell<=ppw->pv->l_max_ur;ell++) ppw->pv->y[ppw->pv->index_pt_l1_ur+ell-1]=(ell<=L)?v[ell+5]:0.;
+    if (ppt->k_output_values_num>0 && ppw->index_ikout>=0) {
+      snap[ns++]=ppw->pv->y[ppw->pv->index_pt_V];
+      for (ell=0;ell<4;ell++) snap[ns++]=ppw->pv->y[j+ell]/((ell==3)?hc:1.);
+      snap[ns++]=ppw->pv->y[ppw->pv->index_pt_theta_b];
+      for (ell=1;ell<=L;ell++) snap[ns++]=ppw->pv->y[ppw->pv->index_pt_l1_ur+ell-1];
+      class_call(cosmos_svt_snapshot(pba->cosmos_cauchy_snapshot_file,ppw->index_ikout,'v',k,a,hc,snap,ns,ppt->error_message),ppt->error_message,ppt->error_message);
+    }
+  }
+
   return _SUCCESS_;
 }
 
@@ -9780,6 +9978,17 @@ int perturbations_print_variables(double tau,
     /* Cold dark matter */
     class_store_double(dataptr, delta_cdm, pba->has_cdm, storeidx);
     class_store_double(dataptr, theta_cdm, pba->has_cdm, storeidx);
+
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos;
+      double rs=pba->Omega0_cosmos*pba->H0*pba->H0/a2,kc=pba->cosmos_zeta*rs/6.;
+      double pi=-(8.*rs/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[j+2]+kc*pba->cosmos_beta*y[j+3];
+      double metric=(ppt->gauge==newtonian)?y[ppw->pv->index_pt_phi]:y[ppw->pv->index_pt_eta];
+      int z;for (z=0;z<5;z++) class_store_double(dataptr,y[j+z],_TRUE_,storeidx);
+      class_store_double(dataptr,pi,_TRUE_,storeidx);
+      class_store_double(dataptr,y[j+2]+1.5*sqrt(2./3.)*y[j]-3.*sqrt(2./3.)*metric,_TRUE_,storeidx);
+    }
+
     /* Interacting dark matter */
     class_store_double(dataptr, delta_idm, pba->has_idm, storeidx);
     class_store_double(dataptr, theta_idm, pba->has_idm, storeidx);

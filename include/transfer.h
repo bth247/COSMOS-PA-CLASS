@@ -443,12 +443,7 @@ extern "C" {
                                   short use_full_limber
                                   );
 
-  int transfer_radial_coordinates(
-                                  struct transfer * ptr,
-                                  struct transfer_workspace * ptw,
-                                  int index_md,
-                                  int index_q
-                                  );
+  int transfer_radial_coordinates(struct transfer * ptr, struct transfer_workspace * ptw, double k);
 
   int transfer_interpolate_sources(
                                    struct perturbations * ppt,

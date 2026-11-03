@@ -2083,7 +2083,7 @@ int transfer_compute_for_each_q(
                infer the array of radial coordinates r(tau0_minus_tau) as well as a
                few other quantities related by trigonometric functions */
 
-            class_call(transfer_radial_coordinates(ptr,ptw,index_md,index_q),
+            class_call(transfer_radial_coordinates(ptr,ptw,k),
                        ptr->error_message,
                        ptr->error_message);
 
@@ -2241,12 +2241,7 @@ int transfer_compute_for_each_q(
 
 }
 
-int transfer_radial_coordinates(
-                                struct transfer * ptr,
-                                struct transfer_workspace * ptw,
-                                int index_md,
-                                int index_q
-                                ) {
+int transfer_radial_coordinates(struct transfer * ptr, struct transfer_workspace * ptw, double k) {
 
   int index_tau;
   double sqrt_absK=0.;
@@ -2256,13 +2251,13 @@ int transfer_radial_coordinates(
     sqrt_absK = sqrt(ptw->K);
     for (index_tau=0; index_tau < ptw->tau_size; index_tau++) {
       ptw->chi[index_tau] = sqrt_absK*ptw->tau0_minus_tau[index_tau];
-      ptw->cscKgen[index_tau] = sqrt_absK/ptr->k[index_md][index_q]/sin(ptw->chi[index_tau]);
+      ptw->cscKgen[index_tau] = sqrt_absK/k/sin(ptw->chi[index_tau]);
       ptw->cotKgen[index_tau] = ptw->cscKgen[index_tau]*cos(ptw->chi[index_tau]);
     }
     break;
   case 0:
     for (index_tau=0; index_tau < ptw->tau_size; index_tau++) {
-      ptw->chi[index_tau] = ptr->k[index_md][index_q] * ptw->tau0_minus_tau[index_tau];
+      ptw->chi[index_tau] = k * ptw->tau0_minus_tau[index_tau];
       ptw->cscKgen[index_tau] = 1.0/ptw->chi[index_tau];
       ptw->cotKgen[index_tau] = 1.0/ptw->chi[index_tau];
     }
@@ -2271,7 +2266,7 @@ int transfer_radial_coordinates(
     sqrt_absK = sqrt(-ptw->K);
     for (index_tau=0; index_tau < ptw->tau_size; index_tau++) {
       ptw->chi[index_tau] = sqrt_absK*ptw->tau0_minus_tau[index_tau];
-      ptw->cscKgen[index_tau] = sqrt_absK/ptr->k[index_md][index_q]/sinh(ptw->chi[index_tau]);
+      ptw->cscKgen[index_tau] = sqrt_absK/k/sinh(ptw->chi[index_tau]);
       ptw->cotKgen[index_tau] = ptw->cscKgen[index_tau]*cosh(ptw->chi[index_tau]);
     }
     break;
