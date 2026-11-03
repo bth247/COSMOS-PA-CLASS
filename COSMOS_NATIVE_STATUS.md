@@ -71,3 +71,15 @@ Production k/time/multipole and vacuum coverage, coherent-flavor spectral
 collisions, complete native gauge/Bianchi certification and likelihoods
 remain incomplete. Earlier missing-feature statements above are historical.
 
+
+Radiation hierarchy validation update
+------------------------------------
+Matched-state audits expose late-time gauge/constraint errors from the
+default radiation streaming/fluid closures. Scalar/vector Cauchy imports
+now require radiation_streaming_approximation=3 and ur_fluid_approximation=3.
+An explicit cosmos_cauchy_radiation_control=yes override exists only to
+replay unvalidated diagnostic controls. It does not certify those closures.
+
+The main project retains the rejected controls and full-hierarchy finite
+gauge/conservation refinement, including the hierarchy-cutoff comparison.
+Full production all-k/flavor/Bianchi validation remains incomplete.

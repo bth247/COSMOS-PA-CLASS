@@ -903,6 +903,14 @@ int perturbations_init(
 
   /** - perform preliminary checks */
 
+  /* Radiation closures have not been derived with COSMOS gate stress.
+     Explicit opt-in is reserved for numerical failure/control replays. */
+  class_test((pba->cosmos_scalar_cauchy_file[0]!='\0' || pba->cosmos_vector_cauchy_file[0]!='\0') &&
+    pba->cosmos_cauchy_radiation_control==_FALSE_ &&
+    (ppr->radiation_streaming_approximation!=rsa_none || ppr->ur_fluid_approximation!=ufa_none),
+    ppt->error_message,
+    "COSMOS SV Cauchy imports require full radiation hierarchies: radiation_streaming_approximation=3 and ur_fluid_approximation=3. For unvalidated diagnostic controls only, set cosmos_cauchy_radiation_control=yes.");
+
   if (ppt->has_perturbations == _FALSE_) {
     if (ppt->perturbations_verbose > 0)
       printf("No sources requested. Perturbation module skipped.\n");

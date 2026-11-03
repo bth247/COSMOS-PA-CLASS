@@ -3302,6 +3302,7 @@ int input_read_parameters_species(struct file_content * pfc,
   class_read_double("cosmos_xi",pba->cosmos_xi);
   class_read_double("cosmos_initial_phase",pba->cosmos_initial_phase);
 
+  class_read_flag("cosmos_cauchy_radiation_control",pba->cosmos_cauchy_radiation_control);
   class_read_string("cosmos_scalar_cauchy_file",pba->cosmos_scalar_cauchy_file);
   class_read_string("cosmos_vector_cauchy_file",pba->cosmos_vector_cauchy_file);
   class_read_string("cosmos_cauchy_snapshot_file",pba->cosmos_cauchy_snapshot_file);
@@ -6070,6 +6071,7 @@ int input_default_params(struct background *pba,
   /** 9) Dark energy contributions */
   pba->Omega0_cosmos = 0.;
   pba->cosmos_initial_phase = 0.01;
+  pba->cosmos_cauchy_radiation_control = _FALSE_;
   pba->cosmos_scalar_cauchy_file[0]='\0';pba->cosmos_vector_cauchy_file[0]='\0';pba->cosmos_cauchy_snapshot_file[0]='\0';
   pba->cosmos_scalar_cauchy_a=0.;pba->cosmos_vector_cauchy_a=0.;
   pba->cosmos_scalar_cauchy_lmax=6;pba->cosmos_vector_cauchy_lmax=6;
