@@ -41,3 +41,33 @@ reference shape/amplitude are divided out, not fitted independently.
 This does not complete scalar/vector decoupling transport, spectral/flavor
 QKE evolution, all-k interpolation convergence, massive-neutrino handoff,
 or production Einstein/Bianchi/gauge validation. Likelihoods remain disabled.
+
+Matched scalar/vector Cauchy entry (conditional sampled controls)
+--------------------------------------------------------------
+
+Scalar-only and vector-only fixed-a imports are now available with
+massless neutrinos, photon tight coupling and the standard flat background.
+Scalar rows retain CDM-comoving densities and the Newtonian clock; vector
+rows carry normal velocities and TAM multipoles. The reader validates the
+entire table and supplied Einstein/material constraints, rejects absent k
+coverage, and preserves exact nodes. Inter-node constraint completion is
+not a certification of physical transfer interpolation.
+
+The associated project now transports six real scalar canonical columns
+through IRH-0, a regular-gradient thermal bridge, conditional AD-M matter
+initialization and EM-rest FD weak decoupling. Previously matched vector
+columns also enter the native solver. All six scalar/four vector matched
+pivot bases pass two-gauge controls. Native solid/gate UETC factors cover
+the matched pivot through late evolution. Diagnostic k extensions used in
+response spectra are not cosmological predictions.
+
+The full-Limber radial-coordinate helper now receives the caller's selected
+k, avoiding an out-of-bounds regular-grid access for Limber q indices.
+Lensing remains enabled in scalar controls. See the versioned reports and
+theory/REHEATING_SCALAR_CLASS.md in the associated repository for exact
+constraints, covariance units, approximations and remaining validation.
+
+Production k/time/multipole and vacuum coverage, coherent-flavor spectral
+collisions, complete native gauge/Bianchi certification and likelihoods
+remain incomplete. Earlier missing-feature statements above are historical.
+
