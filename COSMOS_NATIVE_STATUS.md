@@ -24,3 +24,20 @@ https://github.com/bth247/COSMOS-PA/blob/main/STATUS.md
 
 No native likelihood fitting is enabled. Original CLASS attribution and
 license remain intact.
+
+Tensor Cauchy ingestion is now available for flat, tensor-only TAM runs
+with massless ur and positive Omega_cosmos. Input supplies h,h_N,Q,Q_N
+and neutrino Theta_2..Theta_lmax at one fixed scale factor. Strict log-k
+interpolation rejects absent/out-of-range/malformed requested data; no
+initial Taylor series or stock neutrino quadrupole replaces the supplied
+state. A fixed-a time locator aligns the integration and source grids.
+
+The associated project computes CONDITIONAL reheating-matched tensor
+covariances through a conserved thermal join and weak decoupling. The
+native adapter retains the inferred canonical r as a reference weight,
+with the actual covariance carried by the initial basis data. Numerical
+reference shape/amplitude are divided out, not fitted independently.
+
+This does not complete scalar/vector decoupling transport, spectral/flavor
+QKE evolution, all-k interpolation convergence, massive-neutrino handoff,
+or production Einstein/Bianchi/gauge validation. Likelihoods remain disabled.

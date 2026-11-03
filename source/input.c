@@ -3301,6 +3301,14 @@ int input_read_parameters_species(struct file_content * pfc,
   class_read_double("cosmos_cg",pba->cosmos_cg);
   class_read_double("cosmos_xi",pba->cosmos_xi);
   class_read_double("cosmos_initial_phase",pba->cosmos_initial_phase);
+  class_read_string("cosmos_tensor_cauchy_file",pba->cosmos_tensor_cauchy_file);
+  class_read_double("cosmos_tensor_cauchy_a",pba->cosmos_tensor_cauchy_a);
+  class_read_int("cosmos_tensor_cauchy_lmax",pba->cosmos_tensor_cauchy_lmax);
+  class_test(pba->cosmos_tensor_cauchy_file[0]!='\0' &&
+    (!ppt->has_tensors || ppt->has_scalars || ppt->has_vectors || pba->Omega0_cosmos<=0. ||
+     fabs(pba->Omega0_k)>1e-14 || pba->cosmos_tensor_cauchy_a<=0. || pba->cosmos_tensor_cauchy_a>=1. ||
+     pba->cosmos_tensor_cauchy_lmax<2 || pba->cosmos_tensor_cauchy_lmax>64),errmsg,
+    "Tensor Cauchy input requires tensor-only flat positive-COSMOS modes, valid a and lmax 2..64");
   class_read_double("cosmos_vector_control_seed",pba->cosmos_vector_control_seed);
   class_read_double("cosmos_vector_control_seed_prime",pba->cosmos_vector_control_seed_prime);
   class_test((pba->cosmos_vector_control_seed!=0. || pba->cosmos_vector_control_seed_prime!=0.) && (!ppt->has_vectors || pba->Omega0_cosmos<=0.),errmsg,"Vector gate control seeds require vector modes and positive Omega_cosmos");
@@ -6041,6 +6049,8 @@ int input_default_params(struct background *pba,
   /** 9) Dark energy contributions */
   pba->Omega0_cosmos = 0.;
   pba->cosmos_initial_phase = 0.01;
+  pba->cosmos_tensor_cauchy_file[0]='\0';
+  pba->cosmos_tensor_cauchy_a=0.;pba->cosmos_tensor_cauchy_lmax=6;
   pba->cosmos_vector_control_seed=0.; pba->cosmos_vector_control_seed_prime=0.;
   pba->cosmos_beta = 0.5; pba->cosmos_zeta = 4.;
   pba->cosmos_cg = 0.7071067811865475244; pba->cosmos_xi = 50.;

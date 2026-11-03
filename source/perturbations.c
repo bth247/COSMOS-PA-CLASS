@@ -27,6 +27,63 @@
 #include "perturbations.h"
 #include "parallel.h"
 
+/* Refine inverse-background interpolation so the Cauchy surface is fixed a. */
+static int cosmos_tensor_cauchy_tau(struct background *pba, double target,
+                                   double *tau, ErrorMsg errmsg) {
+  double *v,relative=1.;
+  int last=0,iteration;
+  class_call(background_tau_of_z(pba,1./target-1.,tau),pba->error_message,errmsg);
+  class_alloc(v,pba->bg_size*sizeof(double),errmsg);
+  for (iteration=0;iteration<12;iteration++) {
+    class_call(background_at_tau(pba,*tau,long_info,inter_normal,&last,v),pba->error_message,errmsg);
+    relative=(v[pba->index_bg_a]-target)/target;
+    if (fabs(relative)<1.e-12) break;
+    *tau-=(v[pba->index_bg_a]-target)/(v[pba->index_bg_a]*v[pba->index_bg_a]*v[pba->index_bg_H]);
+  }
+  free(v);
+  class_test(fabs(relative)>1.e-10,errmsg,"Unable to locate fixed-a tensor Cauchy surface");
+  return _SUCCESS_;
+}
+
+/* COSMOS tensor Cauchy v1: strict log-k interpolation, no extrapolation. */
+static int cosmos_tensor_cauchy_read(const char *filename, double k,
+                                    int columns, double *out, ErrorMsg errmsg) {
+  FILE *f=fopen(filename,"r");
+  char line[8192], *cursor, *end;
+  double row[128],prev[128],fraction,previous_k=-1.;
+  int i,have_previous=0,line_number=0;
+  class_test(f==NULL,errmsg,"Cannot open tensor Cauchy data %s",filename);
+  if (columns<6 || columns>128) { fclose(f); class_stop(errmsg,"Invalid tensor Cauchy column count"); }
+  while (fgets(line,sizeof(line),f)!=NULL) {
+    line_number++; cursor=line;
+    while (*cursor==' ' || *cursor=='\t') cursor++;
+    if (*cursor=='#' || *cursor=='\n' || *cursor=='\r' || *cursor=='\0') continue;
+    for (i=0;i<columns;i++) {
+      row[i]=strtod(cursor,&end);
+      if (end==cursor || !isfinite(row[i])) { fclose(f); class_stop(errmsg,"Invalid tensor Cauchy number at line %d",line_number); }
+      cursor=end;
+    }
+    while (*cursor==' ' || *cursor=='\t' || *cursor=='\r' || *cursor=='\n') cursor++;
+    if (*cursor!='\0' && *cursor!='#') { fclose(f); class_stop(errmsg,"Extra tensor Cauchy columns at line %d",line_number); }
+    if (row[0]<=0. || row[0]<=previous_k) { fclose(f); class_stop(errmsg,"Tensor Cauchy k grid must be positive and increasing"); }
+    previous_k=row[0];
+    if (fabs(log(k/row[0]))<1.e-12) {
+      for (i=1;i<columns;i++) out[i-1]=row[i];
+      fclose(f); return _SUCCESS_;
+    }
+    if (row[0]>k) {
+      if (!have_previous) { fclose(f); class_stop(errmsg,"Tensor Cauchy k=%g below supplied grid",k); }
+      fraction=log(k/prev[0])/log(row[0]/prev[0]);
+      for (i=1;i<columns;i++) out[i-1]=prev[i]+fraction*(row[i]-prev[i]);
+      fclose(f); return _SUCCESS_;
+    }
+    for (i=0;i<columns;i++) prev[i]=row[i];
+    have_previous=1;
+  }
+  fclose(f); class_stop(errmsg,"Tensor Cauchy k=%g above supplied grid or empty file",k);
+}
+
+
 
 /**
  * Source function \f$ S^{X} (k, \tau) \f$ at a given conformal time tau.
@@ -1884,6 +1941,11 @@ int perturbations_timesampling_for_sources(
       timescale_source = 1/aH; repeat till today.
   */
 
+  if (pba->cosmos_tensor_cauchy_file[0]!='\0') {
+    double entry_tau;
+    class_call(cosmos_tensor_cauchy_tau(pba,pba->cosmos_tensor_cauchy_a,&entry_tau,ppt->error_message),ppt->error_message,ppt->error_message);
+    tau_ini=MAX(tau_ini,entry_tau);
+  }
   counter = 1;
   last_index_back = first_index_back;
   last_index_thermo = first_index_thermo;
@@ -3108,6 +3170,10 @@ int perturbations_solve(
   }
 
   tau = tau_mid;
+  if (_tensors_ && pba->cosmos_tensor_cauchy_file[0]!='\0') {
+    class_call(cosmos_tensor_cauchy_tau(pba,pba->cosmos_tensor_cauchy_a,&tau,ppt->error_message),ppt->error_message,ppt->error_message);
+    class_test(tau>ppt->tau_sampling[0]*(1.+1.e-10),ppt->error_message,"Tensor Cauchy entry is later than source sampling start");
+  }
 
   /** - find the number of intervals over which approximation scheme is constant */
 
@@ -6750,6 +6816,27 @@ int perturbations_initial_conditions(struct precision * ppr,
       for (n_ncdm = 0; n_ncdm < pba->N_ncdm; n_ncdm++) {
         rho_fs += 3.*ppw->pvecback[pba->index_bg_p_ncdm1+n_ncdm];
       }
+    }
+
+
+    /* COSMOS external tensor Cauchy data replaces ALL metric/gate/ur ICs. */
+    if (pba->cosmos_tensor_cauchy_file[0]!='\0') {
+      double values[127],hc=ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H];
+      int j=ppw->pv->index_pt_cosmos_tensor,ell;
+      class_test(ppt->hierarchy!=tam || !ppt->evolve_tensor_ur || pba->has_ncdm,
+                 ppt->error_message,"Tensor Cauchy ingestion requires TAM and massless ur, N_ncdm=0");
+      class_test(ppw->approx[ppw->index_ap_tca]!=(int)tca_on,
+                 ppt->error_message,"Tensor Cauchy entry requires photon tight coupling");
+      class_test(pba->cosmos_tensor_cauchy_lmax>ppw->pv->l_max_ur,
+                 ppt->error_message,"Tensor Cauchy lmax exceeds evolved ur hierarchy");
+      class_call(cosmos_tensor_cauchy_read(pba->cosmos_tensor_cauchy_file,k,
+                   pba->cosmos_tensor_cauchy_lmax+4,values,ppt->error_message),ppt->error_message,ppt->error_message);
+      ppw->pv->y[ppw->pv->index_pt_gw]=values[0];
+      ppw->pv->y[ppw->pv->index_pt_gwdot]=hc*values[1];
+      ppw->pv->y[j]=values[2];ppw->pv->y[j+1]=hc*values[3];
+      for (ell=2;ell<=ppw->pv->l_max_ur;ell++)
+        ppw->pv->y[ppw->pv->index_pt_l2_ur+ell-2]=
+          (ell<=pba->cosmos_tensor_cauchy_lmax)?values[ell+2]:0.;
     }
 
   }
