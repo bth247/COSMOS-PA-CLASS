@@ -113,13 +113,13 @@ static double cosmos_svt_entry_a(struct background *pba) {
 }
 
 static int cosmos_svt_snapshot(const char *base,int index,char mode,double k,
-                               double a,double hc,double *v,int count,ErrorMsg errmsg) {
+                               double a,double hc,double *v,int count,int evolved_ur_lmax,ErrorMsg errmsg) {
   char path[1024];FILE *f;int j,n;
   if (base[0]=='\0' || index<0) return _SUCCESS_;
   n=snprintf(path,sizeof(path),"%s_k%d_%c.dat",base,index,mode);
   class_test(n<0 || n>=(int)sizeof(path),errmsg,"Cauchy snapshot path too long");
   f=fopen(path,"w");class_test(f==NULL,errmsg,"Cannot write Cauchy snapshot %s",path);
-  fprintf(f,"# Exact initial native state before evolution; k a Hconf followed by current-gauge fields\n");
+  fprintf(f,"# Exact initial native state before evolution; k a Hconf followed by current-gauge fields; evolved_ur_lmax=%d\n",evolved_ur_lmax);
   fprintf(f,"%.17e %.17e %.17e",k,a,hc);
   for (j=0;j<count;j++) fprintf(f," %.17e",v[j]);
   fprintf(f,"\n");fclose(f);return _SUCCESS_;
@@ -7011,7 +7011,7 @@ int perturbations_initial_conditions(struct precision * ppr,
       snap[ns++]=ppw->pv->y[ppw->pv->index_pt_delta_ur];snap[ns++]=ppw->pv->y[ppw->pv->index_pt_theta_ur]/hc;snap[ns++]=ppw->pv->y[ppw->pv->index_pt_shear_ur];
       for (ell=3;ell<=L;ell++) snap[ns++]=ppw->pv->y[ppw->pv->index_pt_l3_ur+ell-3];
       for (ell=0;ell<5;ell++) snap[ns++]=ppw->pv->y[j+ell]/((ell==1 || ell==4)?hc:1.);
-      class_call(cosmos_svt_snapshot(pba->cosmos_cauchy_snapshot_file,ppw->index_ikout,'s',k,a,hc,snap,ns,ppt->error_message),ppt->error_message,ppt->error_message);
+      class_call(cosmos_svt_snapshot(pba->cosmos_cauchy_snapshot_file,ppw->index_ikout,'s',k,a,hc,snap,ns,ppw->pv->l_max_ur,ppt->error_message),ppt->error_message,ppt->error_message);
     }
   }
   if (_vectors_ && pba->cosmos_vector_cauchy_file[0]!='\0') {
@@ -7043,7 +7043,7 @@ int perturbations_initial_conditions(struct precision * ppr,
       for (ell=0;ell<4;ell++) snap[ns++]=ppw->pv->y[j+ell]/((ell==3)?hc:1.);
       snap[ns++]=ppw->pv->y[ppw->pv->index_pt_theta_b];
       for (ell=1;ell<=L;ell++) snap[ns++]=ppw->pv->y[ppw->pv->index_pt_l1_ur+ell-1];
-      class_call(cosmos_svt_snapshot(pba->cosmos_cauchy_snapshot_file,ppw->index_ikout,'v',k,a,hc,snap,ns,ppt->error_message),ppt->error_message,ppt->error_message);
+      class_call(cosmos_svt_snapshot(pba->cosmos_cauchy_snapshot_file,ppw->index_ikout,'v',k,a,hc,snap,ns,ppw->pv->l_max_ur,ppt->error_message),ppt->error_message,ppt->error_message);
     }
   }
 
