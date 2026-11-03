@@ -3301,9 +3301,12 @@ int input_read_parameters_species(struct file_content * pfc,
   class_read_double("cosmos_cg",pba->cosmos_cg);
   class_read_double("cosmos_xi",pba->cosmos_xi);
   class_read_double("cosmos_initial_phase",pba->cosmos_initial_phase);
+  class_read_double("cosmos_vector_control_seed",pba->cosmos_vector_control_seed);
+  class_read_double("cosmos_vector_control_seed_prime",pba->cosmos_vector_control_seed_prime);
+  class_test((pba->cosmos_vector_control_seed!=0. || pba->cosmos_vector_control_seed_prime!=0.) && (!ppt->has_vectors || pba->Omega0_cosmos<=0.),errmsg,"Vector gate control seeds require vector modes and positive Omega_cosmos");
   class_test(!(pba->cosmos_initial_phase>0.) || pba->cosmos_initial_phase>0.1,errmsg,"cosmos_initial_phase must be in (0,0.1]");
   class_test(pba->Omega0_cosmos<0. || pba->cosmos_zeta<=0. || pba->cosmos_cg<=0. || pba->cosmos_cg>1. || pba->cosmos_xi<=0.,errmsg,"Invalid COSMOS microscopic coefficients");
-  class_test(pba->Omega0_cosmos>0. && ppt->has_vectors,errmsg,"EXPERIMENTAL COSMOS patch implements scalar/tensor response only; vector spectra remain disabled");
+  class_test(pba->Omega0_cosmos>0. && ppt->has_vectors && fabs(pba->Omega0_k)>1e-14,errmsg,"COSMOS native vector response currently requires spatial flatness");
   /* Compute Omega_tot */
   Omega_tot = pba->Omega0_g + pba->Omega0_cosmos;
   Omega_tot += pba->Omega0_b;
@@ -6038,6 +6041,7 @@ int input_default_params(struct background *pba,
   /** 9) Dark energy contributions */
   pba->Omega0_cosmos = 0.;
   pba->cosmos_initial_phase = 0.01;
+  pba->cosmos_vector_control_seed=0.; pba->cosmos_vector_control_seed_prime=0.;
   pba->cosmos_beta = 0.5; pba->cosmos_zeta = 4.;
   pba->cosmos_cg = 0.7071067811865475244; pba->cosmos_xi = 50.;
   pba->Omega0_fld = 0.;

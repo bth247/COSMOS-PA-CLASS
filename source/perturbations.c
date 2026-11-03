@@ -3400,6 +3400,12 @@ int perturbations_prepare_k_output(struct background * pba,
       class_store_columntitle(ppt->vector_titles,"a",_TRUE_);
       class_store_columntitle(ppt->vector_titles,"V (vec. mod.)",_TRUE_);
       class_store_columntitle(ppt->vector_titles,"theta_b",_TRUE_);
+      class_store_columntitle(ppt->vector_titles,"W_cosmos_GI",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->vector_titles,"E_cosmos_harmonic",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->vector_titles,"Q_cosmos_harmonic",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->vector_titles,"Qprime_cosmos_harmonic",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->vector_titles,"Pi_cosmos_CLASS_harmonic",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->vector_titles,"momentum_constraint_residual_massless",pba->Omega0_cosmos>0. && pba->N_ncdm==0);
       switch (ppt->hierarchy) {
       case optimal:
         class_store_columntitle(ppt->vector_titles,"F_ur_0",_TRUE_);
@@ -4262,6 +4268,7 @@ int perturbations_vector_init(
 	The synchronous gauge changes the definition of velocities and dipoles but not the metric perturbations,
 	see e.g text after 2.5 in 2410.03612 where \f$ v^{synchronous} = v^{newt} - V \f$
     */
+    class_define_index(ppv->index_pt_cosmos_vector,pba->Omega0_cosmos>0.,index_pt,4);
     class_define_index(ppv->index_pt_V,_TRUE_,index_pt,1);
 
   }
@@ -5514,6 +5521,10 @@ int perturbations_vector_init(
           the approximation switching is. We treat them here. Below
           we will treat other variables case by case. */
 
+      if (pba->Omega0_cosmos>0.) {
+        int j; for (j=0;j<4;j++)
+          ppv->y[ppv->index_pt_cosmos_vector+j]=ppw->pv->y[ppw->pv->index_pt_cosmos_vector+j];
+      }
       ppv->y[ppv->index_pt_V] =
         ppw->pv->y[ppw->pv->index_pt_V];
 
@@ -6405,11 +6416,7 @@ int perturbations_initial_conditions(struct precision * ppr,
       l1_ur = -Phi0 * (5.*rho_r + 4.*rho_nu) / (4.*rho_nu);
       /* In TCA theta_b stands for the velocity (akak vorticity) of the fluid, hence 3.8 of 2410.03612. */
       theta_b = Phi0/(1.+R_Hu) * (5.*rho_r + 4.*rho_nu) / (4.*ppw->pvecback[pba->index_bg_rho_g]);
-      /* If not synchronous gauge we must add V to the velocities */
-      if (ppt->gauge == newtonian) {
-        l1_ur += V_init;
-        theta_b += V_init;
-      }
+      /* Transform once below, after assigning synchronous data. */
       /* Quadrupole of neutrinos, 3.7 of 2410.03612 */
       l2_ur = -Phi0 *k*_SQRT3_*ssqrt3 *(5./12*rho_r/rho_nu*tau+ cH/6.*tau*tau);
       /* l=3 is not excited for small k corresponding to q/sqrt(K) = 3, since in that case l_max = 2. */
@@ -6428,11 +6435,7 @@ int perturbations_initial_conditions(struct precision * ppr,
       /* Eq. 3.28, dipole of neutrinos */
       l1_ur = Phi0/8.*(k*k -2.*pba->K)*rho_r/rho_nu*tau*tau;
       /* Eq 3.31. In TCA theta_b stands for the velocity of the tight coupled fluid. It stays null. */
-      /* If not synchronous gauge we must add V to the velocities */
-      if (ppt->gauge == newtonian) {
-        l1_ur += V_init;
-        theta_b += V_init;
-      }
+      /* Transform once below, after assigning synchronous data. */
       /* Quadrupole of neutrinos Eq. 3.29 */
       l2_ur = -Phi0 *k*_SQRT3_*ssqrt3 *(5./12*rho_r/rho_nu*tau+ cH/6.*tau*tau);
       /* l=3 is not excited for small k corresponding to q/sqrt(K) = 3, since in that case l_max = 2. */
@@ -6498,6 +6501,39 @@ int perturbations_initial_conditions(struct precision * ppr,
 
   }
 
+  /* Massless vector finite-time momentum-constraint projection. The
+     previous truncated initial dipoles canceled at leading order but
+     omitted the k^2 correction that supports a finite V through 0i.
+     A common normal-velocity shift leaves photon/neutrino relative
+     isocurvature unchanged. Applied in both gauges. */
+  if (_vectors_ && pba->N_ncdm==0 && pba->has_ur && pba->K==0.) {
+    double V=ppw->pv->y[ppw->pv->index_pt_V];
+    double shift=(ppt->gauge==newtonian) ? V : 0.;
+    double wg=ppw->pv->y[ppw->pv->index_pt_theta_b]-shift;
+    double wn;
+    if (ppt->hierarchy==optimal)
+      wn=-_SQRT2_/4.*(ppw->pv->y[ppw->pv->index_pt_l0_ur]+ppw->pv->y[ppw->pv->index_pt_l0_ur+2])-shift;
+    else wn=ppw->pv->y[ppw->pv->index_pt_l1_ur]-shift;
+    double rg=ppw->pvecback[pba->index_bg_rho_g];
+    double rb=ppw->pvecback[pba->index_bg_rho_b];
+    double rn=ppw->pvecback[pba->index_bg_rho_ur];
+    double rfluid=4.*(rg+rn)/3.+rb;
+    double residual=k*k*V/(6.*a*a)-(4.*rg/3.+rb)*wg-4.*rn/3.*wn;
+    double dv=residual/rfluid;
+    ppw->pv->y[ppw->pv->index_pt_theta_b]+=dv;
+    if (ppt->hierarchy==optimal) ppw->pv->y[ppw->pv->index_pt_l0_ur]-=2.*_SQRT2_*dv;
+    else ppw->pv->y[ppw->pv->index_pt_l1_ur]+=dv;
+  }
+  /* Independent finite-time gate basis, explicitly NOT an IRH-0 mode.
+     Initial W=E=V=radiation momenta=0 satisfies the vector momentum
+     constraint. Nonzero Pi drives V' and W' consistently afterward. */
+  if (_vectors_ && pba->Omega0_cosmos>0. &&
+      (pba->cosmos_vector_control_seed!=0. || pba->cosmos_vector_control_seed_prime!=0.)) {
+    int j; for (j=0;j<ppw->pv->pt_size;j++) ppw->pv->y[j]=0.;
+    j=ppw->pv->index_pt_cosmos_vector;
+    ppw->pv->y[j+2]=pba->cosmos_vector_control_seed;
+    ppw->pv->y[j+3]=pba->cosmos_vector_control_seed_prime;
+  }
   /** --> For tensors */
 
   if (_tensors_) {
@@ -8034,6 +8070,15 @@ int perturbations_total_stress_energy(
   if (_vectors_) {
 
     ppw->vector_source_pi = 0.;
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos_vector;
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/a2;
+      double kc=pba->cosmos_zeta*rc/6.;
+      /* Pi is the coefficient of Qij=-D_(i Qj)/k (norm squared 1/2).
+         CLASS Einstein equation uses V'+2HV=-3 a^2 Pi_CLASS/k. */
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[j+1]+kc*pba->cosmos_beta*y[j+2];
+      ppw->vector_source_pi+=a2*pi;
+    }
 
     rho_fs=0.;
     ssqrt3 = sqrt(1.-2.*pba->K/k/k);
@@ -8067,11 +8112,16 @@ int perturbations_total_stress_energy(
         }
       }
       else {
-        /* CP: If the TCA is on, we could still compute the
-           anisotropic stress and the source for vector modes. However
-           the contribution to the source from these times would be
-           completely negligible. For simplicity, we stick to the
-           approximation vector_source_pi = 0 during the TCA. */
+        /* Include the photon TCA stress used by the fluid Euler equation.
+           Dropping it in Einstein while retaining it in Euler breaks 0i
+           propagation. Flat native vector controls use Theta2=4/9 sqrt(3)
+           k/kappa' (W_fluid+V). */
+        if (pba->Omega0_cosmos>0. && pba->K==0. && ppw->pvecthermo[pth->index_th_dkappa]>0.) {
+          double v=y[ppw->pv->index_pt_theta_b];
+          if (ppt->gauge==synchronous) v+=y[ppw->pv->index_pt_V];
+          ppw->vector_source_pi+=32./45.*a2*ppw->pvecback[pba->index_bg_rho_g]
+            *k/ppw->pvecthermo[pth->index_th_dkappa]*v;
+        }
       }
     }
 
@@ -9014,10 +9064,13 @@ int perturbations_sources(
         /* In Newtonian gauge, the source terms are in 2.26 of 2410.03612 or 35 of astro-ph/9709066 */
 
         /* l=1 and m=1 source */
-        _set_source_(ppt->index_tp_vector_t1) = ppw->pvecmetric[ppw->index_mt_V_prime]*pvecthermo[pth->index_th_exp_m_kappa]
-          +pvecthermo[pth->index_th_g]*theta_b;
-        /* l=2 and m=1 source */
-        _set_source_(ppt->index_tp_t2) = pvecthermo[pth->index_th_g] * P;
+        /* Common GI dipole representation: Theta1_GI=Theta1_newt-V.
+           The transformed hierarchy shifts the metric source to l=2,
+           avoiding a gauge-dependent numerical integration by parts. */
+        _set_source_(ppt->index_tp_vector_t1) = pvecthermo[pth->index_th_g]
+          *(theta_b-y[ppw->pv->index_pt_V]);
+        _set_source_(ppt->index_tp_t2) = k*ssqrt3/_SQRT3_*y[ppw->pv->index_pt_V]
+          *pvecthermo[pth->index_th_exp_m_kappa]+pvecthermo[pth->index_th_g]*P;
       }
     }
 
@@ -9838,6 +9891,29 @@ int perturbations_print_variables(double tau,
     class_store_double(dataptr, pvecback[pba->index_bg_a], _TRUE_, storeidx);
     class_store_double(dataptr, y[ppw->pv->index_pt_V], _TRUE_, storeidx);
     class_store_double(dataptr, theta_b, _TRUE_, storeidx);
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos_vector;
+      double ac=pvecback[pba->index_bg_a];
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/(ac*ac);
+      double kc=pba->cosmos_zeta*rc/6.;
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[j+1]+kc*pba->cosmos_beta*y[j+2];
+      class_store_double(dataptr,y[j],_TRUE_,storeidx);
+      class_store_double(dataptr,y[j+1],_TRUE_,storeidx);
+      class_store_double(dataptr,y[j+2],_TRUE_,storeidx);
+      class_store_double(dataptr,y[j+3],_TRUE_,storeidx);
+      class_store_double(dataptr,pi,_TRUE_,storeidx);
+      if (pba->N_ncdm==0) {
+        double V=y[ppw->pv->index_pt_V];
+        double shift=(ppt->gauge==newtonian) ? V : 0.;
+        double wg=(ppt->hierarchy==optimal ? -_SQRT2_/4.*(l0_g+l2_g) : l1_g)-shift;
+        double wn=(ppt->hierarchy==optimal ? -_SQRT2_/4.*(l0_ur+l2_ur) : l1_ur)-shift;
+        double momentum=pvecback[pba->index_bg_rho_b]*(theta_b-shift)
+          +4./3.*pvecback[pba->index_bg_rho_g]*wg
+          +4./3.*pvecback[pba->index_bg_rho_ur]*wn+2.*rc*y[j]/3.;
+        double residual=k*k*V-6.*ac*ac*momentum;
+        class_store_double(dataptr,residual,_TRUE_,storeidx);
+      }
+    }
     switch (ppt->hierarchy) {
     case optimal:
       class_store_double(dataptr, l0_ur, _TRUE_, storeidx);
@@ -11564,6 +11640,19 @@ int perturbations_derivs(double tau,
     }
 
     /* In all cases we integrate the metric */
+    if (pba->Omega0_cosmos>0.) {
+      int j=pv->index_pt_cosmos_vector;
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/a2;
+      double kc=pba->cosmos_zeta*rc/6.;
+      double m2=pba->cosmos_cg*pba->cosmos_cg/(pba->cosmos_xi*pba->cosmos_xi);
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[j+1]+kc*pba->cosmos_beta*y[j+2];
+      /* W is the gauge-invariant normal velocity, in BOTH gauges.
+         E'= -k(W+V) includes the shift/spatial-shear metric term. */
+      dy[j]=-2.*a_prime_over_a*y[j]-k*pi/(2.*(2.*rc/3.));
+      dy[j+1]=-k*(y[j]+y[pv->index_pt_V]);
+      dy[j+2]=y[j+3];
+      dy[j+3]=-2.*a_prime_over_a*y[j+3]-(pba->cosmos_cg*pba->cosmos_cg*k2+m2)*y[j+2]+m2*pba->cosmos_beta*y[j+1];
+    }
     dy[pv->index_pt_V] = pvecmetric[ppw->index_mt_V_prime];
 
   }

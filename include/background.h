@@ -104,6 +104,7 @@ struct background
   /* COSMOS EXPERIMENTAL scalar elastic/gate species, not fld. */
   double Omega0_cosmos, cosmos_beta, cosmos_zeta, cosmos_cg, cosmos_xi;
   double cosmos_initial_phase;
+  double cosmos_vector_control_seed, cosmos_vector_control_seed_prime;
   double Omega0_fld;       /**< \f$ \Omega_{0 de} \f$: fluid */
   double Omega0_scf;       /**< \f$ \Omega_{0 scf} \f$: scalar field */
   short use_ppf; /**< flag switching on PPF perturbation equations instead of true fluid equations for perturbations. It could have been defined inside

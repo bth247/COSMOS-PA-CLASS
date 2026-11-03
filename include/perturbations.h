@@ -544,6 +544,7 @@ struct perturbations_vector
   int index_pt_theta_idm; /**< idm velocity */
   int index_pt_delta_dcdm; /**< dcdm density */
   int index_pt_theta_dcdm; /**< dcdm velocity */
+  int index_pt_cosmos_vector; /**< consecutive GI normal velocity W, strain E, Q,Qprime */
   int index_pt_cosmos_tensor; /**< consecutive tensor Q,Qprime, in gw metric normalization */
   int index_pt_cosmos; /**< five consecutive scalar states delta,theta,E,Q,Qprime */
   int index_pt_delta_fld;  /**< dark energy density in true fluid case */

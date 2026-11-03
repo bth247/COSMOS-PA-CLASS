@@ -1,19 +1,26 @@
-# COSMOS native CLASS prototype — experimental
+# Experimental COSMOS native SVT response
 
 Base: official CLASS v3.4.1, 814ce59c380a5cccd0bed1747a384ff7bfc1f9cf.
-This branch adds a distinct solid/gate background and scalar response,
-dynamical tensor gate response, tensor stress diagnostics, and a gate-frequency
-initial-series start-time check. It is NOT the completed IRH-0 native model.
+This branch implements the solid background and scalar, vector and tensor
+response equations, with metric coupling and state/stress diagnostics.
+It is NOT a validated IRH-0 primordial gate prediction solver.
 
-Vectors and independent stochastic gate primordial modes are NOT implemented.
-Nonzero Omega_cosmos with vector modes is explicitly rejected. Scalar/tensor
-runs only test responses to existing primordial metric modes. They must NOT
-be used as native gate observational predictions or for likelihood fitting.
+Vector updates include gauge-invariant normal velocity/strain/gate states,
+a correction for duplicated upstream Newtonian initial velocity shifts,
+a common gauge-invariant line-of-sight source representation, a massless
+finite-time momentum-constraint projection, and consistent photon TCA stress.
+Flat-space independent finite-time vector gate bases are available for
+post-decoupling transfer/UETC controls. These are NOT reheating matching.
 
-Reproducible installers, full patch, numerical controls, derivations, IRH-0
-prescription, and validation boundaries live in:
+Independent inflationary gate mode preparation, thermal neutrino decoupling,
+full IRH-0 matching, massive-neutrino vector constraint certification,
+production convergence, and likelihood predictions remain incomplete.
+Spatial curvature with the COSMOS vector species is explicitly rejected.
+
+Code installers, derivations, tests, source pins, and numerical controls:
 https://github.com/bth247/COSMOS-PA/tree/main/native
+Current scientific status:
 https://github.com/bth247/COSMOS-PA/blob/main/STATUS.md
 
-See native/tensor/README.md there for the tested controls and normalization.
-The original CLASS license and attribution remain intact.
+No native likelihood fitting is enabled. Original CLASS attribution and
+license remain intact.
