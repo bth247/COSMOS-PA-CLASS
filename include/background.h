@@ -101,6 +101,9 @@ struct background
   double Omega0_k;         /**< \f$ \Omega_{0_k} \f$: curvature contribution */
 
   double Omega0_lambda;    /**< \f$ \Omega_{0_\Lambda} \f$: cosmological constant */
+  /* COSMOS EXPERIMENTAL scalar elastic/gate species, not fld. */
+  double Omega0_cosmos, cosmos_beta, cosmos_zeta, cosmos_cg, cosmos_xi;
+  double cosmos_initial_phase;
   double Omega0_fld;       /**< \f$ \Omega_{0 de} \f$: fluid */
   double Omega0_scf;       /**< \f$ \Omega_{0 scf} \f$: scalar field */
   short use_ppf; /**< flag switching on PPF perturbation equations instead of true fluid equations for perturbations. It could have been defined inside

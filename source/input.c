@@ -3295,8 +3295,17 @@ int input_read_parameters_species(struct file_content * pfc,
      first unspecified component. */
 
   /* ** BUDGET EQUATION ** -> Add your species here */
+  class_read_double("Omega_cosmos",pba->Omega0_cosmos);
+  class_read_double("cosmos_beta",pba->cosmos_beta);
+  class_read_double("cosmos_zeta",pba->cosmos_zeta);
+  class_read_double("cosmos_cg",pba->cosmos_cg);
+  class_read_double("cosmos_xi",pba->cosmos_xi);
+  class_read_double("cosmos_initial_phase",pba->cosmos_initial_phase);
+  class_test(!(pba->cosmos_initial_phase>0.) || pba->cosmos_initial_phase>0.1,errmsg,"cosmos_initial_phase must be in (0,0.1]");
+  class_test(pba->Omega0_cosmos<0. || pba->cosmos_zeta<=0. || pba->cosmos_cg<=0. || pba->cosmos_cg>1. || pba->cosmos_xi<=0.,errmsg,"Invalid COSMOS microscopic coefficients");
+  class_test(pba->Omega0_cosmos>0. && ppt->has_vectors,errmsg,"EXPERIMENTAL COSMOS patch implements scalar/tensor response only; vector spectra remain disabled");
   /* Compute Omega_tot */
-  Omega_tot = pba->Omega0_g;
+  Omega_tot = pba->Omega0_g + pba->Omega0_cosmos;
   Omega_tot += pba->Omega0_b;
   Omega_tot += pba->Omega0_ur;
   Omega_tot += pba->Omega0_cdm;
@@ -6027,6 +6036,10 @@ int input_default_params(struct background *pba,
   /* ** ADDITIONAL SPECIES ** */
 
   /** 9) Dark energy contributions */
+  pba->Omega0_cosmos = 0.;
+  pba->cosmos_initial_phase = 0.01;
+  pba->cosmos_beta = 0.5; pba->cosmos_zeta = 4.;
+  pba->cosmos_cg = 0.7071067811865475244; pba->cosmos_xi = 50.;
   pba->Omega0_fld = 0.;
   pba->Omega0_scf = 0.;
   pba->Omega0_lambda = 1.-pba->Omega0_k-pba->Omega0_g-pba->Omega0_ur-pba->Omega0_b-pba->Omega0_cdm-pba->Omega0_ncdm_tot-pba->Omega0_dcdmdr - pba->Omega0_idr -pba->Omega0_idm;

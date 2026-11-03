@@ -572,6 +572,11 @@ int background_functions(
     rho_r += pvecback[pba->index_bg_rho_idr];
   }
 
+  /* COSMOS rho_class=rho_physical/(3 Mpl^2), w=-1/3. */
+  if (pba->Omega0_cosmos>0.) {
+    double rc=pba->Omega0_cosmos*pba->H0*pba->H0/(a*a);
+    rho_tot+=rc; p_tot-=rc/3.; dp_dloga+=2.*rc/3.;
+  }
   /** - compute expansion rate H from Friedmann equation: this is the
       only place where the Friedmann equation is assumed. Remember
       that densities are all expressed in units of \f$ [3c^2/8\pi G] \f$, ie

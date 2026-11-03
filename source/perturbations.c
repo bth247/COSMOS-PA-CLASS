@@ -3022,6 +3022,11 @@ int perturbations_solve(
     }
   }
 
+  if (pba->Omega0_cosmos>0.) {
+    double omega=pba->cosmos_cg*sqrt(k*k+1./(pba->cosmos_xi*pba->cosmos_xi));
+    class_test(omega*tau_lower>pba->cosmos_initial_phase,ppt->error_message,
+      "Background starts too late for gate initial series; reduce a_ini_over_a_today_default");
+  }
   /* is at most the time at which sources must be sampled */
   tau_upper = ppt->tau_sampling[0];
 
@@ -3031,6 +3036,10 @@ int perturbations_solve(
   while ((tau_upper - tau_lower)/tau_lower > ppr->tol_tau_approx) {
 
     is_early_enough = _TRUE_;
+    if (pba->Omega0_cosmos>0.) {
+      double omega=pba->cosmos_cg*sqrt(k*k+1./(pba->cosmos_xi*pba->cosmos_xi));
+      if (omega*tau_mid>pba->cosmos_initial_phase) is_early_enough=_FALSE_;
+    }
 
     class_call(background_at_tau(pba,
                                  tau_mid,
@@ -3425,6 +3434,9 @@ int perturbations_prepare_k_output(struct background * pba,
       class_store_columntitle(ppt->tensor_titles,"a",_TRUE_);
       class_store_columntitle(ppt->tensor_titles,"H (gw)",_TRUE_);
       class_store_columntitle(ppt->tensor_titles,"Hdot (gwdot)",_TRUE_);
+      class_store_columntitle(ppt->tensor_titles,"Q_cosmos_gw_norm",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->tensor_titles,"Qprime_cosmos_gw_norm",pba->Omega0_cosmos>0.);
+      class_store_columntitle(ppt->tensor_titles,"Pi_cosmos_CLASS_gw_norm",pba->Omega0_cosmos>0.);
       switch (ppt->hierarchy) {
       case optimal:
         class_store_columntitle(ppt->tensor_titles,"F_g_0",_TRUE_);
@@ -4075,9 +4087,12 @@ int perturbations_vector_init(
       class_define_index(ppv->index_pt_F0_dr,_TRUE_,index_pt,ppv->l_max_dr+1); /* all momenta in Boltzmann hierarchy  */
     }
 
+    /* Native COSMOS scalar states survive approximation changes. */
+    class_define_index(ppv->index_pt_cosmos,pba->Omega0_cosmos>0.,index_pt,5);
     /* fluid */
 
     if (pba->use_ppf == _FALSE_) {
+
       class_define_index(ppv->index_pt_delta_fld,pba->has_fld,index_pt,1); /* fluid density */
       class_define_index(ppv->index_pt_theta_fld,pba->has_fld,index_pt,1); /* fluid velocity */
     }
@@ -4331,6 +4346,7 @@ int perturbations_vector_init(
 
     /** - (b) metric perturbation h is a propagating degree of freedom, so h and hdot are included
         in the vector of ordinary perturbations, no in that of metric perturbations */
+    class_define_index(ppv->index_pt_cosmos_tensor,pba->Omega0_cosmos>0.,index_pt,2);
     class_define_index(ppv->index_pt_gw,_TRUE_,index_pt,1);     /* tensor metric perturbation h (gravitational waves) */
     class_define_index(ppv->index_pt_gwdot,_TRUE_,index_pt,1);  /* its time-derivative */
 
@@ -4680,6 +4696,10 @@ int perturbations_vector_init(
           the approximation switching is. We treat them here. Below
           we will treat other variables case by case. */
 
+      if (pba->Omega0_cosmos>0.) {
+        int j; for (j=0;j<5;j++)
+          ppv->y[ppv->index_pt_cosmos+j]=ppw->pv->y[ppw->pv->index_pt_cosmos+j];
+      }
       ppv->y[ppv->index_pt_delta_b] =
         ppw->pv->y[ppw->pv->index_pt_delta_b];
 
@@ -5619,6 +5639,10 @@ int perturbations_vector_init(
           we will treat other variables case by case. */
 
 
+      if (pba->Omega0_cosmos>0.) {
+        int j; for (j=0;j<2;j++)
+          ppv->y[ppv->index_pt_cosmos_tensor+j]=ppw->pv->y[ppw->pv->index_pt_cosmos_tensor+j];
+      }
       ppv->y[ppv->index_pt_gw] =
         ppw->pv->y[ppw->pv->index_pt_gw];
 
@@ -6146,6 +6170,15 @@ int perturbations_initial_conditions(struct precision * ppr,
     }
 
 
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos;
+      double dm=pba->has_cdm ? ppw->pv->y[ppw->pv->index_pt_delta_cdm] : ppw->pv->y[ppw->pv->index_pt_delta_b];
+      double m2=pba->cosmos_cg*pba->cosmos_cg/(pba->cosmos_xi*pba->cosmos_xi);
+      ppw->pv->y[j]=2.*dm/3.; ppw->pv->y[j+1]=0.;
+      ppw->pv->y[j+2]=sqrt(2./3.)*(-dm+3.*eta);
+      ppw->pv->y[j+3]=m2*pba->cosmos_beta*ppw->pv->y[j+2]*tau*tau/6.;
+      ppw->pv->y[j+4]=2.*ppw->pv->y[j+3]/tau;
+    }
     /** - (d) If the needed gauge is the newtonian gauge, we must compute alpha and then perform a gauge transformation for each variable */
 
     if (ppt->gauge == newtonian) {
@@ -6256,6 +6289,11 @@ int perturbations_initial_conditions(struct precision * ppr,
 
       }
 
+      if (pba->Omega0_cosmos>0.) {
+        int j=ppw->pv->index_pt_cosmos;
+        ppw->pv->y[j]-=2.*a_prime_over_a*alpha;
+        ppw->pv->y[j+1]+=k*k*alpha;
+      }
     } /* end of gauge transformation to newtonian gauge */
 
       /** - (e) In any gauge, we should now implement the relativistic initial conditions in ur and ncdm variables */
@@ -6625,7 +6663,18 @@ int perturbations_initial_conditions(struct precision * ppr,
     }
 
     /** We correct the initial condition for h and h'. It is crucial for h' since it is of order tau. We could however omit the correction in h. */
-    h_corr_2 = - ppw->pv->y[ppw->pv->index_pt_gw] *(k2+2*pba->K)/(6 + 8./5.*rho_fs/rho_r) *tau*tau;
+    /* Add the constant conformal elastic tensor stiffness at this order.
+       Independent gate-seeded initial modes remain absent. */
+    h_corr_2 = - ppw->pv->y[ppw->pv->index_pt_gw]
+      *(k2+2*pba->K+6.*pba->Omega0_cosmos*pba->H0*pba->H0
+        *(4./15.+pba->cosmos_zeta*pba->cosmos_beta*pba->cosmos_beta/12.))
+      /(6 + 8./5.*rho_fs/rho_r) *tau*tau;
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos_tensor;
+      double m2=pba->cosmos_cg*pba->cosmos_cg/(pba->cosmos_xi*pba->cosmos_xi);
+      ppw->pv->y[j]=m2*pba->cosmos_beta*ppw->pv->y[ppw->pv->index_pt_gw]*tau*tau/12.;
+      ppw->pv->y[j+1]=2.*ppw->pv->y[j]/tau;
+    }
     ppw->pv->y[ppw->pv->index_pt_gw] += h_corr_2;
     ppw->pv->y[ppw->pv->index_pt_gwdot] = 2.*h_corr_2/tau;
 
@@ -7852,6 +7901,17 @@ int perturbations_total_stress_energy(
 
     }
 
+    /* COSMOS units are CLASS density units (physical / 3 Mpl^2). */
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos;
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/a2;
+      double kc=pba->cosmos_zeta*rc/6.;
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[j+2]+kc*pba->cosmos_beta*y[j+3];
+      ppw->delta_rho+=rc*y[j]; ppw->delta_p-=rc*y[j]/3.;
+      ppw->rho_plus_p_theta+=2.*rc*y[j+1]/3.;
+      ppw->rho_plus_p_shear-=sqrt(2./3.)*pi;
+      ppw->rho_plus_p_tot+=2.*rc/3.;
+    }
     /* add your extra species here */
 
     /* fluid contribution */
@@ -8103,6 +8163,16 @@ int perturbations_total_stress_energy(
   if (_tensors_) {
 
     ppw->gw_source = 0.0;
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos_tensor;
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/a2;
+      double kc=pba->cosmos_zeta*rc/6.;
+      /* Q and Pi are scaled in the SAME normalization as CLASS gw.
+         Pi_CLASS=Pi_physical/(3 Mpl^2); 16piG -> 6 in CLASS units. */
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[ppw->pv->index_pt_gw]/2.
+                +kc*pba->cosmos_beta*y[j];
+      ppw->gw_source+=6.*a2*pi;
+    }
 
     /** - --> photon contribution to gravitational wave source: */
     if (ppw->approx[ppw->index_ap_rsa] == (int)rsa_off) { /* if radiation streaming approximation is off */
@@ -9902,6 +9972,16 @@ int perturbations_print_variables(double tau,
     class_store_double(dataptr, pvecback[pba->index_bg_a], _TRUE_, storeidx);
     class_store_double(dataptr, y[ppw->pv->index_pt_gw], _TRUE_, storeidx);
     class_store_double(dataptr, y[ppw->pv->index_pt_gwdot], _TRUE_, storeidx);
+    if (pba->Omega0_cosmos>0.) {
+      int j=ppw->pv->index_pt_cosmos_tensor;
+      double ac=ppw->pvecback[pba->index_bg_a];
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/(ac*ac);
+      double kc=pba->cosmos_zeta*rc/6.;
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[ppw->pv->index_pt_gw]/2.+kc*pba->cosmos_beta*y[j];
+      class_store_double(dataptr,y[j],_TRUE_,storeidx);
+      class_store_double(dataptr,y[j+1],_TRUE_,storeidx);
+      class_store_double(dataptr,pi,_TRUE_,storeidx);
+    }
 
     switch (ppt->hierarchy) {
     case optimal:
@@ -10785,6 +10865,19 @@ int perturbations_derivs(double tau,
 
     }
 
+    /* COSMOS scalar conservation and dynamical gate (no closures). */
+    if (pba->Omega0_cosmos>0.) {
+      int j=pv->index_pt_cosmos;
+      double rc=pba->Omega0_cosmos*pba->H0*pba->H0/a2;
+      double kc=pba->cosmos_zeta*rc/6.;
+      double f=sqrt(2./3.), m2=pba->cosmos_cg*pba->cosmos_cg/(pba->cosmos_xi*pba->cosmos_xi);
+      double pi=-(8.*rc/15.+kc*pba->cosmos_beta*pba->cosmos_beta)*y[j+2]+kc*pba->cosmos_beta*y[j+3];
+      dy[j]=-2./3.*(y[j+1]+metric_continuity);
+      dy[j+1]=-2.*a_prime_over_a*y[j+1]-k2*y[j]/2.+metric_euler+k2*f*pi/(2.*rc/3.);
+      dy[j+2]=f*(y[j+1]+metric_shear);
+      dy[j+3]=y[j+4];
+      dy[j+4]=-2.*a_prime_over_a*y[j+4]-(pba->cosmos_cg*pba->cosmos_cg*k2+m2)*y[j+3]+m2*pba->cosmos_beta*y[j+2];
+    }
     /** - ---> fluid (fld) */
 
     if (pba->has_fld == _TRUE_) {
@@ -11702,6 +11795,14 @@ int perturbations_derivs(double tau,
     }
 
     /** - --> tensor metric perturbation h (gravitational waves) */
+    if (pba->Omega0_cosmos>0.) {
+      int j=pv->index_pt_cosmos_tensor;
+      double m2=pba->cosmos_cg*pba->cosmos_cg/(pba->cosmos_xi*pba->cosmos_xi);
+      dy[j]=y[j+1];
+      dy[j+1]=-2.*a_prime_over_a*y[j+1]
+              -(pba->cosmos_cg*pba->cosmos_cg*k2+m2)*y[j]
+              +m2*pba->cosmos_beta*y[pv->index_pt_gw]/2.;
+    }
     dy[pv->index_pt_gw] = y[pv->index_pt_gwdot];
 
     /** - --> its time-derivative */
